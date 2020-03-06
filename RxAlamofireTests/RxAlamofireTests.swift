@@ -26,7 +26,7 @@ private struct Dummy {
 
 class RxAlamofireSpec: XCTestCase {
 	
-	var manager: SessionManager!
+	var manager: Session!
 	
 	let testError = NSError(domain: "RxAlamofire Test Error", code: -1, userInfo: nil)
 	let disposeBag = DisposeBag()
@@ -34,7 +34,7 @@ class RxAlamofireSpec: XCTestCase {
 	//MARK: Configuration
 	override func setUp() {
 		super.setUp()
-		manager = SessionManager()
+		manager = Session()
 		
 		_ = stub(condition: isHost("mywebservice.com")) { _ in
 			return OHHTTPStubsResponse(data: Dummy.DataStringData, statusCode:200, headers:nil)
@@ -72,34 +72,6 @@ class RxAlamofireSpec: XCTestCase {
         }
 	}
 
-    func testProgress() {
-        do {
-            let dataRequest = try request(HTTPMethod.get, "http://myjsondata.com").toBlocking().first()!
-            let progressObservable = dataRequest.rx.progress().share(replay: 100, scope: .forever)
-            let _ = progressObservable.subscribe { }
-            let delegate = dataRequest.delegate as! DataTaskDelegate
-            let progressHandler = delegate.progressHandler!
-            [(1000, 4000), (4000, 4000)].forEach { completed, total in
-                let progress = Alamofire.Progress()
-                progress.completedUnitCount = Int64(completed)
-                progress.totalUnitCount = Int64(total)
-                progressHandler.closure(progress)
-            }
-            let actualEvents = try progressObservable.toBlocking().toArray()
-            let expectedEvents = [
-                RxProgress(bytesWritten: 0, totalBytes: 0),
-                RxProgress(bytesWritten: 1000, totalBytes: 4000),
-                RxProgress(bytesWritten: 4000, totalBytes: 4000),
-            ]
-            XCTAssertEqual(actualEvents.count, expectedEvents.count)
-            for i in 0..<actualEvents.count {
-                XCTAssertEqual(actualEvents[i], expectedEvents[i])
-            }
-        } catch {
-            XCTFail("\(error)")
-        }
-    }
-
     func testRxProgress() {
         let subject = RxProgress(bytesWritten: 1000, totalBytes: 4000)
         XCTAssertEqual(subject.bytesRemaining, 3000)
@@ -115,8 +87,8 @@ class RxAlamofireSpec: XCTestCase {
             let temporaryDirectory = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
             let fileURL = temporaryDirectory.appendingPathComponent("\(UUID().uuidString).json")
             
-            let destination: DownloadRequest.DownloadFileDestination = { _, _ in (fileURL, []) }
-            let request = download(
+            let destination: DownloadRequest.Destination = { _, _ in (fileURL, []) }
+            let request = manager.download(
                 "http://myjsondata.com",
                 to: destination
             )
@@ -127,7 +99,7 @@ class RxAlamofireSpec: XCTestCase {
                 .first()!
             
             XCTAssertEqual(defaultResponse.response?.statusCode, 200)
-            XCTAssertNotNil(defaultResponse.destinationURL)
+            XCTAssertNotNil(defaultResponse.fileURL)
         } catch {
             XCTFail("\(error)")
         }
@@ -138,14 +110,14 @@ class RxAlamofireSpec: XCTestCase {
             let temporaryDirectory = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
             let fileURL = temporaryDirectory.appendingPathComponent("\(UUID().uuidString).json")
             
-            let destination: DownloadRequest.DownloadFileDestination = { _, _ in (fileURL, []) }
-            let request = download(
+            let destination: DownloadRequest.Destination = { _, _ in (fileURL, []) }
+            let request = manager.download(
                 "http://myjsondata.com",
                 to: destination
             )
             
             let jsonResponse = try request.rx
-                .responseSerialized(responseSerializer: DownloadRequest.jsonResponseSerializer())
+                .responseSerialized(responseSerializer: JSONResponseSerializer())
                 .toBlocking()
                 .first()!
             
